@@ -1,0 +1,7 @@
+node_modules
+*.json.key
+ktg-live-tracking-firebase-adminsdk-*.json
+.DS_Store
+.vscode/
+.claude/
+uploads/

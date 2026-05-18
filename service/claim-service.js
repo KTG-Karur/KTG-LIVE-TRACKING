@@ -1,0 +1,146 @@
+"use strict";
+
+const sequelize = require('../models/index').sequelize;
+const messages = require("../helpers/message");
+const _ = require('lodash');
+const { QueryTypes } = require('sequelize');
+const moment = require('moment');
+
+async function getClaim(query, isEdit = false) {
+  try {
+    let filters = [];
+
+    if (query && Object.keys(query).length) {
+      if (query.claimId) {
+        filters.push(`c.claim_id = ${query.claimId}`);
+      }
+
+      if (query.statusId) {
+        filters.push(`c.status_id = ${query.statusId}`);
+      }
+
+      if (query.approvedBy) {
+        filters.push(`c.approved_by = ${query.approvedBy}`);
+      }
+
+      if (query.fromDate) {
+        const from = moment(query.fromDate).format('YYYY-MM-DD');
+        const to = moment(query.toDate).format('YYYY-MM-DD');
+        filters.push(`c.apply_date BETWEEN '${from}' AND '${to}'`);
+      }
+
+      if (query.fromDate) {
+        const from = moment(query.fromDate).format('YYYY-MM-DD');
+        const to = moment(query.toDate).format('YYYY-MM-DD');
+        filters.push(`c.purchase_date BETWEEN '${from}' AND '${to}'`);
+      }
+
+      if (query.requestedBy) {
+        filters.push(`c.requested_by = ${query.requestedBy}`);
+      }
+
+      if (query.requestedDate) {
+        filters.push(`DATE(c.apply_date) = '${query.requestedDate}'`);
+      }
+
+      if (query.approvedDate) {
+        filters.push(`DATE(c.approved_date) = '${query.approvedDate}'`);
+      }
+
+      if (query.approvedDate) {
+        filters.push(`DATE(c.purchase_date) = '${query.approvedDate}'`);
+      }
+
+      if (query.branchId) {
+        if (query.branchId.includes(',')) {
+          const branchIds = query.branchId
+            .split(',')
+            .map(id => id.trim())
+            .filter(id => id !== '');
+          if (branchIds.length > 0) {
+            const orConditions = branchIds.map(id => `s.branch_id = ${id}`).join(' OR ');
+            filters.push(`(${orConditions})`);
+          }
+        } else {
+          filters.push(`s.branch_id = ${query.branchId}`);
+        }
+      }
+
+      if (query.departmentId || query.departmentId === '') {
+        if (query.departmentId !== '') {
+          filters.push(`s.department_id = ${query.departmentId}`);
+        }
+      }
+    }
+    if (!isEdit) {
+      filters.push(`c.is_active = 1`);
+    }
+
+    const iql = filters.length > 0 ? `WHERE ${filters.join(' AND ')}` : '';
+
+    const result = await sequelize.query(`SELECT c.claim_id "claimId", c.claim_type_id "claimTypeId",ct.claim_type_name "claimTypeName",
+        s.staff_profile_image_name AS "staffProfile",
+        c.requested_by "requestedById",CONCAT(s.first_name,' ',s.last_name) as requestedBy,
+        c.bank_account_id "bankAccountId",s.dob "dob",s.date_of_joining "dateOfJoining",
+        c.requested_amount "requestedAmount", c.reason, c.branch_id "branchId",b.branch_name "branchName",s.staff_code "staffCode",
+        c.recepit_image_name "recepitImageName",sl.status_name "statusName", c.claim_amount "claimAmount",
+        c.apply_date "applyDate",c.purchase_date "purchaseDate", c.status_id "statusId", c.mode_of_payment_id "modeOfPaymentId",
+        sl2.status_name "paymentModeName", c.approved_date "approvedDate",c.approved_by "approvedById",
+        CONCAT(s2.first_name,' ',s2.last_name) as approvedBy, c.createdAt,
+        ct.eligible_amount "eligibleAmount",c.recepit_image_name "recepitImageName",
+        s.role_id "roleId", rl.role_name "roleName", c.is_active "isActive",
+      des.designation_name 'designationName',  dep.department_name 'departmentName'
+        FROM claims c
+        left join claim_types ct on ct.claim_type_id = c.claim_type_id 
+        left join staffs s on s.staff_id = c.requested_by 
+        left join staffs s2 on s2.staff_id = c.approved_by 
+        left join branches b on b.branch_id = c.branch_id 
+        left join role rl on rl.role_id = s.role_id
+      left join designation des on des.designation_id = s.designation_id
+      left join department dep on dep.department_id = s.department_id
+        left join status_lists sl on sl.status_list_id = c.status_id 
+        left join status_lists sl2 on sl2.status_list_id = c.mode_of_payment_id 
+        ${iql}
+      ORDER BY c.claim_id DESC`, {
+      type: QueryTypes.SELECT,
+      raw: true,
+      nest: false
+    });
+    return result;
+  } catch (error) {
+    throw new Error(error.message ? error.message : messages.OPERATION_ERROR);
+  }
+}
+
+async function createClaim(postData) {
+  try {
+    const excuteMethod = _.mapKeys(postData, (value, key) => _.snakeCase(key))
+    console.log(excuteMethod)
+    const claimResult = await sequelize.models.claim.create(excuteMethod);
+    const req = {
+      claimId: claimResult.claim_id
+    }
+    return await getClaim(req);
+  } catch (error) {
+    throw new Error(error.message ? error.message : messages.OPERATION_ERROR);
+  }
+}
+
+async function updateClaim(claimId, putData) {
+  try {
+    const excuteMethod = _.mapKeys(putData, (value, key) => _.snakeCase(key))
+    const claimResult = await sequelize.models.claim.update(excuteMethod, { where: { claim_id: claimId } });
+    const req = {
+      claimId: claimId
+    }
+    return await getClaim(req, true);
+  } catch (error) {
+    throw new Error(error.message ? error.message : messages.OPERATION_ERROR);
+  }
+}
+
+module.exports = {
+  getClaim,
+  updateClaim,
+  createClaim
+};
