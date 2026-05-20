@@ -229,7 +229,9 @@ async function getDashboard(query) {
       roleCount,
       branchCount,
       activeAndClosedLoanCount,
-      previousActiveAndClosedLoanCount
+      previousActiveAndClosedLoanCount,
+      employeeReachedData,
+      kmTravelledData
     ] = await Promise.all([
 
       // Staff Leaves in Last 1 Week
@@ -324,6 +326,23 @@ async function getDashboard(query) {
           SUM(CASE WHEN is_active = 0 THEN 1 ELSE 0 END) AS prevClosedLoanCount
         FROM staff_loans
         WHERE loan_date < DATE_FORMAT(NOW(), '%Y-%m-01')
+      `, { type: QueryTypes.SELECT, raw: true }),
+
+      // Employee Reached — today vs yesterday
+      sequelize.query(`
+        SELECT
+          SUM(CASE WHEN entry_date = '${currentDate}' AND status = 'Location Reached' THEN 1 ELSE 0 END) AS todayReachedCount,
+          SUM(CASE WHEN entry_date = DATE_SUB('${currentDate}', INTERVAL 1 DAY) AND status = 'Location Reached' THEN 1 ELSE 0 END) AS prevReachedCount
+        FROM branch_location_entry_logs
+      `, { type: QueryTypes.SELECT, raw: true }),
+
+      // Total KM Travelled — this month vs last month
+      sequelize.query(`
+        SELECT
+          SUM(CASE WHEN tracking_date >= DATE_FORMAT(NOW(), '%Y-%m-01') THEN total_distance_km ELSE 0 END) AS currentMonthKm,
+          SUM(CASE WHEN tracking_date >= DATE_FORMAT(DATE_SUB(NOW(), INTERVAL 1 MONTH), '%Y-%m-01')
+                    AND tracking_date <  DATE_FORMAT(NOW(), '%Y-%m-01') THEN total_distance_km ELSE 0 END) AS prevMonthKm
+        FROM employee_tracking_reports
       `, { type: QueryTypes.SELECT, raw: true })
 
     ]);
@@ -375,6 +394,14 @@ async function getDashboard(query) {
         closedLoanCount: activeAndClosedLoanCount[0].closedLoanCount || 0,
         prevActiveLoanCount: previousActiveAndClosedLoanCount[0].prevActiveLoanCount || 0,
         prevClosedLoanCount: previousActiveAndClosedLoanCount[0].prevClosedLoanCount || 0
+      },
+      employeeReached: {
+        todayReachedCount: employeeReachedData[0].todayReachedCount || 0,
+        prevReachedCount:  employeeReachedData[0].prevReachedCount  || 0
+      },
+      kmTravelled: {
+        currentMonthKm: parseFloat(kmTravelledData[0].currentMonthKm || 0).toFixed(2),
+        prevMonthKm:    parseFloat(kmTravelledData[0].prevMonthKm    || 0).toFixed(2)
       }
     };
 
