@@ -6,6 +6,25 @@ const _ = require('lodash');
 const { QueryTypes } = require('sequelize');
 const moment = require('moment')
 
+// Returns { current, previous, change, trend }
+// trend: 'up' | 'down' | 'same'
+function compareValues(current, previous) {
+    const cur = parseFloat(current) || 0;
+    const prev = parseFloat(previous) || 0;
+    let change = 0;
+    if (prev > 0) {
+        change = parseFloat((((cur - prev) / prev) * 100).toFixed(2));
+    } else if (cur > 0) {
+        change = 100;
+    }
+    return {
+        current: cur,
+        previous: prev,
+        change,
+        trend: cur > prev ? 'up' : cur < prev ? 'down' : 'same'
+    };
+}
+
 // async function getDashboard(query) {
 //   try {
 
@@ -390,19 +409,17 @@ async function getDashboard(query) {
       roleCount,
       branchCount,
       activeAndClosedLoanCount: {
-        activeLoanCount: activeAndClosedLoanCount[0].activeLoanCount || 0,
-        closedLoanCount: activeAndClosedLoanCount[0].closedLoanCount || 0,
-        prevActiveLoanCount: previousActiveAndClosedLoanCount[0].prevActiveLoanCount || 0,
-        prevClosedLoanCount: previousActiveAndClosedLoanCount[0].prevClosedLoanCount || 0
+        activeLoan:  compareValues(activeAndClosedLoanCount[0].activeLoanCount,  previousActiveAndClosedLoanCount[0].prevActiveLoanCount),
+        closedLoan:  compareValues(activeAndClosedLoanCount[0].closedLoanCount,  previousActiveAndClosedLoanCount[0].prevClosedLoanCount)
       },
-      employeeReached: {
-        todayReachedCount: employeeReachedData[0].todayReachedCount || 0,
-        prevReachedCount:  employeeReachedData[0].prevReachedCount  || 0
-      },
-      kmTravelled: {
-        currentMonthKm: parseFloat(kmTravelledData[0].currentMonthKm || 0).toFixed(2),
-        prevMonthKm:    parseFloat(kmTravelledData[0].prevMonthKm    || 0).toFixed(2)
-      }
+      employeeReached: compareValues(
+        employeeReachedData[0].todayReachedCount,
+        employeeReachedData[0].prevReachedCount
+      ),
+      kmTravelled: compareValues(
+        kmTravelledData[0].currentMonthKm,
+        kmTravelledData[0].prevMonthKm
+      )
     };
 
   } catch (error) {
