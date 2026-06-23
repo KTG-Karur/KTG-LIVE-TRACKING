@@ -287,11 +287,11 @@
   </div>
   <div class="meta">
     <div class="meta-item">
-      <div class="val">6</div>
+      <div class="val">7</div>
       <div class="lbl">Modules</div>
     </div>
     <div class="meta-item">
-      <div class="val">18+</div>
+      <div class="val">20+</div>
       <div class="lbl">API Endpoints</div>
     </div>
     <div class="meta-item">
@@ -367,6 +367,14 @@
         <span style="background:#dcfce7;color:#166534">GET</span>
         <span style="background:#fef9c3;color:#854d0e">PUT</span>
         <span style="background:#fee2e2;color:#991b1b">DEL</span>
+      </div>
+    </li>
+    <li>
+      <div class="toc-num">7</div>
+      <div class="toc-name">Dashboard – Comparing Changes</div>
+      <div class="toc-tag">Admin Panel</div>
+      <div class="toc-methods">
+        <span style="background:#dcfce7;color:#166534">GET</span>
       </div>
     </li>
   </ul>
@@ -1092,6 +1100,103 @@ FCM_SERVER_KEY=&lt;your-firebase-server-key&gt;<br>
 JWT_SECRET=KtgUserToken@2011
   </div>
 
+</div>
+
+<!-- ════════════════════════════════════════ MODULE 7: DASHBOARD COMPARING CHANGES -->
+<div class="module-header">
+  <div class="module-num">7</div>
+  <div>
+    <div class="module-title">Dashboard – Comparing Changes</div>
+    <div class="module-sub">Admin Panel &nbsp;·&nbsp; Base URL: <code>/dashboard</code></div>
+  </div>
+</div>
+<div class="module-body">
+  <p style="margin-bottom:14px;">
+    Returns a full dashboard summary including <strong>period-over-period comparisons</strong> for
+    Employee Reached, KM Travelled, and Loan counts. Every comparable field follows a
+    consistent <code>{ current, previous, change, trend }</code> shape so the frontend can
+    render trend arrows and percentage badges without any extra calculation.
+  </p>
+
+  <!-- GET /dashboard -->
+  <div class="endpoint-block">
+    <div class="endpoint-header">
+      <span class="method get">GET</span>
+      <span class="endpoint-path">/dashboard</span>
+      <span class="auth-badge">🔒 JWT Required</span>
+    </div>
+    <div class="endpoint-body">
+
+      <div class="section-title">Query Parameters</div>
+      <table>
+        <thead><tr><th>Parameter</th><th>Type</th><th>Required</th><th>Description</th></tr></thead>
+        <tbody>
+          <tr><td>branchId</td><td>number / comma-list</td><td>Optional</td><td>Filter by one or more branch IDs e.g. <code>1</code> or <code>1,2,3</code></td></tr>
+        </tbody>
+      </table>
+
+      <div class="section-title" style="margin-top:14px;">Compare Shape (used for all comparable fields)</div>
+      <div class="response-box">
+{<br>
+&nbsp;&nbsp;<span class="key">"current"</span>:  &lt;number&gt;,&nbsp;&nbsp;&nbsp;<span class="str">// value for current period</span><br>
+&nbsp;&nbsp;<span class="key">"previous"</span>: &lt;number&gt;,&nbsp;&nbsp;&nbsp;<span class="str">// value for previous period</span><br>
+&nbsp;&nbsp;<span class="key">"change"</span>:   &lt;number&gt;,&nbsp;&nbsp;&nbsp;<span class="str">// % change  e.g. 66.67 or -33.33</span><br>
+&nbsp;&nbsp;<span class="key">"trend"</span>:    <span class="str">"up"</span> | <span class="str">"down"</span> | <span class="str">"same"</span><br>
+}
+      </div>
+
+      <div class="section-title" style="margin-top:14px;">Sample Response</div>
+      <div class="response-box">
+{<br>
+&nbsp;&nbsp;<span class="key">"data"</span>: {<br>
+&nbsp;&nbsp;&nbsp;&nbsp;<span class="key">"employeeReached"</span>: {<br>
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<span class="key">"current"</span>: <span class="num">5</span>,&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<span class="str">// today</span><br>
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<span class="key">"previous"</span>: <span class="num">3</span>,&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<span class="str">// yesterday</span><br>
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<span class="key">"change"</span>: <span class="num">66.67</span>,<br>
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<span class="key">"trend"</span>: <span class="str">"up"</span><br>
+&nbsp;&nbsp;&nbsp;&nbsp;},<br>
+&nbsp;&nbsp;&nbsp;&nbsp;<span class="key">"kmTravelled"</span>: {<br>
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<span class="key">"current"</span>: <span class="num">142.5</span>,&nbsp;&nbsp;&nbsp;<span class="str">// this month (km)</span><br>
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<span class="key">"previous"</span>: <span class="num">98.3</span>,&nbsp;&nbsp;&nbsp;<span class="str">// last month (km)</span><br>
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<span class="key">"change"</span>: <span class="num">44.96</span>,<br>
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<span class="key">"trend"</span>: <span class="str">"up"</span><br>
+&nbsp;&nbsp;&nbsp;&nbsp;},<br>
+&nbsp;&nbsp;&nbsp;&nbsp;<span class="key">"activeAndClosedLoanCount"</span>: {<br>
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<span class="key">"activeLoan"</span>:  { <span class="key">"current"</span>: <span class="num">10</span>, <span class="key">"previous"</span>: <span class="num">8</span>,  <span class="key">"change"</span>: <span class="num">25.0</span>,   <span class="key">"trend"</span>: <span class="str">"up"</span> },<br>
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<span class="key">"closedLoan"</span>:  { <span class="key">"current"</span>: <span class="num">4</span>,  <span class="key">"previous"</span>: <span class="num">6</span>,  <span class="key">"change"</span>: <span class="num">-33.33</span>, <span class="key">"trend"</span>: <span class="str">"down"</span> }<br>
+&nbsp;&nbsp;&nbsp;&nbsp;},<br>
+&nbsp;&nbsp;&nbsp;&nbsp;<span class="key">"attendanceListOut"</span>: {<br>
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<span class="key">"attendanceListCount"</span>: {<br>
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<span class="key">"presentEmployeeCount"</span>:      <span class="num">12</span>,<br>
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<span class="key">"absentEmployeeCount"</span>:       <span class="num">2</span>,<br>
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<span class="key">"halfDayEmployeeCount"</span>:      <span class="num">1</span>,<br>
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<span class="key">"attendanceNotEntryCount"</span>:   <span class="num">3</span><br>
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;},<br>
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<span class="key">"presentEmployeeList"</span>: [ <span class="str">…</span> ],<br>
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<span class="key">"absentEmployeeList"</span>:  [ <span class="str">…</span> ],<br>
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<span class="key">"halfDayEmployeeList"</span>: [ <span class="str">…</span> ]<br>
+&nbsp;&nbsp;&nbsp;&nbsp;},<br>
+&nbsp;&nbsp;&nbsp;&nbsp;<span class="key">"upComingBirthday"</span>: { <span class="key">"staffName"</span>: <span class="str">"Ravi Kumar"</span>, <span class="key">"nextBirthdayDate"</span>: <span class="str">"2026-08-14"</span> },<br>
+&nbsp;&nbsp;&nbsp;&nbsp;<span class="key">"staffLastOneWeekLeave"</span>: [ <span class="str">…</span> ],<br>
+&nbsp;&nbsp;&nbsp;&nbsp;<span class="key">"roleCount"</span>:   [ <span class="str">…</span> ],<br>
+&nbsp;&nbsp;&nbsp;&nbsp;<span class="key">"branchCount"</span>: [ <span class="str">…</span> ]<br>
+&nbsp;&nbsp;},<br>
+&nbsp;&nbsp;<span class="key">"error"</span>: <span class="bool">false</span>, <span class="key">"message"</span>: <span class="str">"Success"</span>, <span class="key">"code"</span>: <span class="num">200</span><br>
+}
+      </div>
+
+      <div class="section-title" style="margin-top:14px;">Comparison Periods</div>
+      <table>
+        <thead><tr><th>Field</th><th>Current Period</th><th>Previous Period</th></tr></thead>
+        <tbody>
+          <tr><td><strong>employeeReached</strong></td><td>Today</td><td>Yesterday</td></tr>
+          <tr><td><strong>kmTravelled</strong></td><td>This month</td><td>Last month</td></tr>
+          <tr><td><strong>activeLoan / closedLoan</strong></td><td>All time</td><td>Before current month</td></tr>
+        </tbody>
+      </table>
+
+    </div>
+  </div>
 </div>
 
 <!-- Footer -->

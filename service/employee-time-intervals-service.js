@@ -38,6 +38,11 @@ async function getEmployeeTracking(query) {
     const totalDistance = await getTotalDistance(staffId, date);
     // Get counts
     const counts = await getCounts(staffId, date);
+
+    // Mark as offline if the user has punched out
+    if (isUserPunchedOut(timeIntervals) && geoLocations.length > 0) {
+      geoLocations[geoLocations.length - 1].actionType = 'offline';
+    }
     
 
     return {
@@ -117,6 +122,20 @@ function formatDate(dateString) {
   return date.toLocaleDateString('en-IN', options).replace(/\s/g, '-');
 }
 
+/**
+ * Check if a user has punched out based on their time intervals.
+ * Returns true if the latest action_type is 'Punch Out-Tracker'.
+ */
+function isUserPunchedOut(timeIntervals) {
+  if (!timeIntervals || timeIntervals.length === 0) return false;
+  for (let i = timeIntervals.length - 1; i >= 0; i--) {
+    const ti = timeIntervals[i];
+    if (ti.actionType === 'Punch Out-Tracker') return true;
+    if (ti.actionType === 'Punch In-Tracker') return false;
+  }
+  return false;
+}
+
 async function getTimeIntervalsByDate(staffId, date) {
   const startDate = new Date(date);
   const endDate = new Date(date);
@@ -194,7 +213,7 @@ async function getCounts(staffId, date) {
      FROM time_intervals 
      WHERE staff_id = ? 
        AND record_created_at BETWEEN ? AND ?
-       AND action_type IN ('Visit In-Tracker', 'Visit Out-Tracker')`,
+       AND action_type = 'Visit In-Tracker'`,
     {
       replacements: [staffId, startTimestamp, endTimestamp],
       type: QueryTypes.SELECT
@@ -291,6 +310,11 @@ async function getAllEmployeeTracking(date) {
         
         // Get counts
         const counts = await getCounts(staff.staffId, date);
+
+        // Mark as offline if the user has punched out
+        if (isUserPunchedOut(timeIntervals) && lastGeoLocation) {
+          lastGeoLocation.actionType = 'offline';
+        }
         
         // Format response similar to getEmployeeTracking but with single geolocation
         return {

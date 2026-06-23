@@ -51,7 +51,8 @@ const schema = {
   collectionAmount: { type: "string", optional: true },
   cellNoName: { type: "string", optional: true },
   attachment: { type: "string", optional: true },
-  nextDueDate: { type: "string", optional: true }
+  nextDueDate: { type: "string", optional: true },
+  formData: { type: "object", optional: true }
 }
 
 async function getTimeIntervals1(req, res) {

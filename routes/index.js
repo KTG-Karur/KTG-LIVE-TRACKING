@@ -57,5 +57,6 @@ module.exports = function routesPlugin(fastify, opts, next) {
   fastify.register(require("./branch-location-entry-log-route"));
   fastify.register(require("./employee-tracking-report-route"));
   fastify.register(require("./office-arrival-route"));
+  fastify.register(require("./admin-route"));
   next();
 };

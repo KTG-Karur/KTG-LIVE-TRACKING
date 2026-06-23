@@ -577,9 +577,114 @@ async function createTimeInterval(postData) {
         console.error("Error creating attendance record:", attendanceError);
         // Don't throw error here - continue with time interval creation
       }
+    } else if (postData.actionType === "Punch Out-Tracker" && postData.staffId && postData.attendanceMarkType == "2") {
+      try {
+        const attendanceDate = moment().format("YYYY-MM-DD");
+        const startOfDay = moment(attendanceDate).startOf('day').valueOf();
+        const endOfDay = moment(attendanceDate).endOf('day').valueOf();
+
+        // Find the first Punch In-Tracker on this date using record_created_at (timezone-independent epoch)
+        const [punchInRecord] = await sequelize.query(
+          `SELECT * FROM time_intervals 
+           WHERE staff_id = :staffId 
+             AND action_type = 'Punch In-Tracker'
+             AND record_created_at BETWEEN :startOfDay AND :endOfDay
+           ORDER BY record_created_at ASC
+           LIMIT 1`,
+          {
+            replacements: { staffId: postData.staffId, startOfDay, endOfDay },
+            type: QueryTypes.SELECT,
+            transaction
+          }
+        );
+
+        let attendanceStatusId = 0; // Default to Absent if no punch-in is found
+        if (punchInRecord) {
+          const punchInTime = parseInt(punchInRecord.time_status || punchInRecord.record_created_at);
+          const punchOutTime = postData.timeStatus ? parseInt(postData.timeStatus) : Date.now();
+          const diffMs = punchOutTime - punchInTime;
+          const diffHours = diffMs / (1000 * 60 * 60);
+          
+          console.log(`Punch Out calculation: Punch In at ${punchInTime}, Punch Out at ${punchOutTime}. Diff hours: ${diffHours}`);
+          
+          if (diffHours >= 4) {
+            attendanceStatusId = 1; // Full Day
+          } else {
+            attendanceStatusId = 2; // Half Day
+          }
+        }
+
+        // Check if attendance record already exists
+        const existingAttendance = await sequelize.models.staff_attendance.findOne({
+          where: {
+            staff_id: postData.staffId,
+            attendance_date: attendanceDate
+          },
+          transaction
+        });
+
+        if (!existingAttendance) {
+          const staffDetails = await sequelize.query(
+            `SELECT s.branch_id, s.department_id 
+             FROM staffs s 
+             WHERE s.staff_id = :staffId AND s.is_active = 1`,
+            {
+              replacements: { staffId: postData.staffId },
+              type: QueryTypes.SELECT,
+              transaction
+            }
+          );
+
+          if (staffDetails && staffDetails.length > 0) {
+            const { branch_id, department_id } = staffDetails[0];
+            await sequelize.models.staff_attendance.create({
+              staff_id: postData.staffId,
+              attendance_date: attendanceDate,
+              branch_id: branch_id,
+              department_id: department_id,
+              attendance_status_id: attendanceStatusId,
+              attendance_incharge_id: postData.staffId
+            }, { transaction });
+            console.log(`Attendance created on Punch Out for staff ${postData.staffId} on ${attendanceDate} with status ${attendanceStatusId}`);
+          }
+        } else {
+          await sequelize.models.staff_attendance.update({
+            attendance_status_id: attendanceStatusId,
+            attendance_incharge_id: postData.staffId
+          }, {
+            where: {
+              staff_attendance_id: existingAttendance.staff_attendance_id
+            },
+            transaction
+          });
+          console.log(`Attendance updated on Punch Out for staff ${postData.staffId} on ${attendanceDate} with status ${attendanceStatusId}`);
+        }
+      } catch (attendanceError) {
+        console.error("Error updating attendance record on Punch Out:", attendanceError);
+      }
     }
     
     await transaction.commit();
+
+    // Emit socket event for live location update
+    try {
+      const { getIO } = require('../socket-manager');
+      const io = getIO();
+      if (io && postData.latitude && postData.longitude) {
+        io.emit('geo:update', {
+          staffId: postData.staffId,
+          latitude: postData.latitude,
+          longitude: postData.longitude,
+          speed: postData.speed,
+          battery: postData.battery,
+          networkStatus: postData.networkStatus,
+          actionType: postData.actionType,
+          recordCreatedAt: postData.recordCreatedAt || Date.now(),
+        });
+      }
+    } catch (socketError) {
+      console.error('Socket emit error:', socketError.message);
+    }
 
     // Return created record
     const req = { id: result.id };
@@ -678,6 +783,26 @@ async function createTimeInterval2(postData) {
 
     await transaction.commit();
 
+    // Emit socket event for live location update
+    try {
+      const { getIO } = require('../socket-manager');
+      const io = getIO();
+      if (io && postData.latitude && postData.longitude) {
+        io.emit('geo:update', {
+          staffId: postData.staff_id,
+          latitude: postData.latitude,
+          longitude: postData.longitude,
+          speed: postData.speed,
+          battery: postData.battery,
+          networkStatus: postData.networkStatus,
+          actionType: postData.action_type,
+          recordCreatedAt: postData.recordCreatedAt || Date.now(),
+        });
+      }
+    } catch (socketError) {
+      console.error('Socket emit error:', socketError.message);
+    }
+
     // Return created record
     const req = { id: result.id };
     return await getTimeIntervalDetails(req);
@@ -712,7 +837,7 @@ async function updateTimeInterval(id, putData) {
     const executeMethod = _.mapKeys(putData, (value, key) => _.snakeCase(key));
 
     // Update time interval using Sequelize model
-    const result = await sequelize.models.time_intervals.update(executeMethod, {
+    const result = await sequelize.models.TimeIntervals.update(executeMethod, {
       where: { id: id },
       transaction,
     });
@@ -736,7 +861,7 @@ async function deleteTimeInterval(id) {
   const transaction = await sequelize.transaction();
   try {
     // Hard delete for time interval data
-    const result = await sequelize.models.time_intervals.destroy({
+    const result = await sequelize.models.TimeIntervals.destroy({
       where: { id: id },
       transaction,
     });
@@ -785,7 +910,7 @@ async function bulkCreateTimeIntervals(timeIntervalsData) {
       return _.mapKeys(processed, (value, key) => _.snakeCase(key));
     });
 
-    const result = await sequelize.models.time_intervals.bulkCreate(processedData, {
+    const result = await sequelize.models.TimeIntervals.bulkCreate(processedData, {
       transaction,
     });
 

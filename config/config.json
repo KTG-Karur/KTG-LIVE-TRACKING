@@ -1,9 +1,17 @@
 {
-  "development": {
+  "development1": {
     "username": "root",
     "password": null,
-    "database": "hr_ktg",
+    "database": "ktg_hrmanagement",
     "host": "localhost",
+    "dialect": "mysql",
+    "timezone": "+05:30"
+  },
+  "development": {
+    "username": "ktg_hr",
+    "password": "Xe42*AFPAxGbe8]T",
+    "database": "ktg_hrmanagement",
+    "host": "194.195.115.123",
     "dialect": "mysql",
     "timezone": "+05:30"
   },
@@ -16,10 +24,10 @@
     "timezone": "+05:30"
   },
   "production": {
-    "username": "ktg_hrmanagement",
-    "password": "H[C*yFWoboIkh!th",
+    "username": "ktg_hr",
+    "password": "Xe42*AFPAxGbe8]T",
     "database": "ktg_hrmanagement",
-    "host": "192.46.213.224",
+    "host": "194.195.115.123",
     "dialect": "mysql",
     "timezone": "+05:30"
   }

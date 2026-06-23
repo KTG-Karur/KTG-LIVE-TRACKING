@@ -66,6 +66,7 @@ module.exports = (sequelize, DataTypes) => {
       cell_no_name: DataTypes.STRING(200),
       attachment: DataTypes.TEXT,
       next_due_date: DataTypes.STRING(100),
+      form_data: DataTypes.JSON,
       createdAt: DataTypes.DATE,
       updatedAt: DataTypes.DATE,
     },

@@ -8,93 +8,53 @@ const moment = require("moment")
 
 async function getPetrolAllowance(query) {
   try {
-    let iql = "";
-    let count = 0;
+    let filters = [];
 
     if (query && Object.keys(query).length) {
-      iql += `WHERE`;
       if (query.petrolAllowanceId) {
-        iql += count >= 1 ? ` AND` : ``;
-        count++;
-        iql += ` pa.petrol_allowance_id = ${query.petrolAllowanceId}`;
+        filters.push(`pa.petrol_allowance_id = ${query.petrolAllowanceId}`);
       }
       if (query.statusId) {
-        iql += count >= 1 ? ` AND` : ``;
-        count++;
-        iql += ` pa.status_id = ${query.statusId}`;
+        filters.push(`pa.status_id = ${query.statusId}`);
       }
-      // if (query.branchId) {
-      //   iql += count >= 1 ? ` AND` : ``;
-      //   count++;
-      //   iql += ` s.branch_id = ${query.branchId}`;
-      // }
-
-      if (query.departmentId) {
-        iql += count >= 1 ? ` AND` : ``;
-        count++;
-        iql += ` s.department_id = ${query.departmentId}`;
+      if (query.departmentId && query.departmentId !== '0' && query.departmentId !== 0) {
+        filters.push(`s.department_id = ${query.departmentId}`);
       }
       if (query.staffId) {
-        iql += count >= 1 ? ` AND` : ``;
-        count++;
-        iql += ` pa.staff_id = ${query.staffId}`;
+        filters.push(`pa.staff_id = ${query.staffId}`);
       }
       if (query.dateFilter) {
-        iql += count >= 1 ? ` AND` : ``;
-        count++;
         const [Year, Month] = query.dateFilter.split("-");
         if (Month && Year) {
-          iql += ` YEAR(pa.allowance_date) = '${Year}' AND MONTH(pa.allowance_date) = '${Month}'`;
+          filters.push(`YEAR(pa.allowance_date) = '${Year}' AND MONTH(pa.allowance_date) = '${Month}'`);
         } else if (Year) {
-          iql += ` YEAR(pa.allowance_date) = '${Year}'`;
+          filters.push(`YEAR(pa.allowance_date) = '${Year}'`);
         }
       }
       if (query.isActive) {
-        iql += count >= 1 ? ` AND` : ``;
-        count++;
-        iql += ` pa.is_active = ${query.isActive}`;
+        filters.push(`pa.is_active = ${query.isActive}`);
       }
-      if (query.fromDate) { // Month and year based for Report
-        iql += count >= 1 ? ` AND` : ``;
-        count++;
-
-        iql += ` ( pa.allowance_date BETWEEN '${moment(query.fromDate).format('YYYY-MM-DD')}' AND '${moment(query.toDate).format('YYYY-MM-DD')}' )`;
-
-        // iql += ` pa.allowance_date BETWEEN '${moment(query.allowanceDate).startOf(query.durationId == 1 ? 'year' : 'month').format('YYYY-MM-DD')}' AND '${moment(query.allowanceDate).endOf(query.durationId == 1 ? 'year' : 'month').format('YYYY-MM-DD')}'`;
+      if (query.fromDate) {
+        filters.push(`( pa.allowance_date BETWEEN '${moment(query.fromDate).format('YYYY-MM-DD')}' AND '${moment(query.toDate).format('YYYY-MM-DD')}' )`);
       }
-      // if (query.branchId || query.branchId == '') {
-      //   if (query.branchId !== '') {
-      //     iql += count >= 1 ? ` AND` : ``;
-      //     count++;
-      //     iql += ` s.branch_id = ${query.branchId}`;
-      //   }
-      // }
-      if (query.branchId) {
-        iql += count >= 1 ? ` AND` : ``;
-        count++;
-        if (query.branchId.includes(',')) {
+      if (query.branchId && query.branchId !== '0' && query.branchId !== 0) {
+        if (String(query.branchId).includes(',')) {
           const branchIds = query.branchId.split(',')
             .map(id => id.trim())
-            .filter(id => id !== '');
-
+            .filter(id => id !== '' && id !== '0');
           if (branchIds.length > 0) {
             const orConditions = branchIds.map(id => `s.branch_id = ${id}`).join(' OR ');
-            iql += ` (${orConditions})`;
+            filters.push(`(${orConditions})`);
           }
         } else {
-          iql += ` s.branch_id = ${query.branchId}`;
-        }
-      }
-      if (query.departmentId || query.departmentId == '') {
-        if (query.departmentId !== '') {
-          iql += count >= 1 ? ` AND` : ``;
-          count++;
-          iql += ` s.department_id = ${query.departmentId}`;
+          filters.push(`s.branch_id = ${query.branchId}`);
         }
       }
     }
 
-    const result = await sequelize.query(`
+    const iql = filters.length > 0 ? `WHERE ${filters.join(' AND ')}` : '';
+
+    let result = await sequelize.query(`
   SELECT 
     pa.petrol_allowance_id AS "petrolAllowanceId",
     pa.staff_id AS "staffId",
@@ -114,6 +74,13 @@ async function getPetrolAllowance(query) {
     pa.branch_id AS "branchId",
     pa.status_id AS "statusId",
     b.branch_name AS "branchName",
+    s.branch_id AS "staffBranchId",
+    COALESCE(b_staff.branch_name, bl_b.branch_name, bl.branch_name,
+      (SELECT b3.branch_name FROM claims c3
+       LEFT JOIN branches b3 ON b3.branch_id = c3.branch_id
+       WHERE c3.requested_by = pa.staff_id AND c3.is_active = 1
+       ORDER BY c3.createdAt DESC LIMIT 1)
+    ) AS "staffBranchName",
     s.staff_code AS "staffCode",
     (
       SELECT GROUP_CONCAT(a.activity_name SEPARATOR ' & ')
@@ -133,6 +100,9 @@ async function getPetrolAllowance(query) {
   FROM petrol_allowances pa
   LEFT JOIN staffs s ON s.staff_id = pa.staff_id
   LEFT JOIN branches b ON b.branch_id = pa.branch_id
+  LEFT JOIN branches b_staff ON b_staff.branch_id = s.branch_id
+  LEFT JOIN branch_locations bl ON bl.staff_id = s.staff_id AND bl.is_active = 1
+  LEFT JOIN branches bl_b ON bl_b.branch_id = bl.branch_id
   LEFT JOIN designation des ON des.designation_id = s.designation_id
   LEFT JOIN department dep ON dep.department_id = s.department_id
   LEFT JOIN status_lists sur ON sur.status_list_id = s.surname_id
@@ -150,13 +120,99 @@ async function getPetrolAllowance(query) {
   GROUP BY pa.petrol_allowance_id
   ORDER BY pa.createdAt DESC`, {
       type: QueryTypes.SELECT,
-      // replacements: {
-      //   limit: 100, // or your pagination value
-      //   offset: 0   // or your pagination value
-      // },
       raw: true,
       nest: false
     });
+
+    if (!query.petrolAllowanceId || String(query.petrolAllowanceId).startsWith('claim-')) {
+      let claimIql = "WHERE c.claim_type_id IN (2, 4)";
+      if (query && Object.keys(query).length) {
+        if (query.petrolAllowanceId) claimIql += ` AND c.claim_id = ${String(query.petrolAllowanceId).replace('claim-', '')}`;
+        if (query.statusId) claimIql += ` AND c.status_id = ${query.statusId}`;
+        if (query.departmentId && query.departmentId !== '') claimIql += ` AND s.department_id = ${query.departmentId}`;
+        if (query.staffId) claimIql += ` AND c.requested_by = ${query.staffId}`;
+        if (query.dateFilter) {
+          const [Year, Month] = query.dateFilter.split("-");
+          if (Month && Year) {
+            claimIql += ` AND YEAR(c.apply_date) = '${Year}' AND MONTH(c.apply_date) = '${Month}'`;
+          } else if (Year) {
+            claimIql += ` AND YEAR(c.apply_date) = '${Year}'`;
+          }
+        }
+        if (query.isActive !== undefined) claimIql += ` AND c.is_active = ${query.isActive}`;
+        if (query.fromDate) {
+          claimIql += ` AND (c.apply_date BETWEEN '${moment(query.fromDate).format('YYYY-MM-DD')}' AND '${moment(query.toDate).format('YYYY-MM-DD')}')`;
+        }
+        if (query.branchId) {
+          if (query.branchId.includes(',')) {
+            const branchIds = query.branchId.split(',').map(id => id.trim()).filter(id => id !== '');
+            if (branchIds.length > 0) {
+              claimIql += ` AND (${branchIds.map(id => `c.branch_id = ${id}`).join(' OR ')})`;
+            }
+          } else {
+            claimIql += ` AND c.branch_id = ${query.branchId}`;
+          }
+        }
+      }
+
+      const claimsResult = await sequelize.query(`
+        SELECT 
+          CONCAT('claim-', c.claim_id) AS "petrolAllowanceId",
+          c.requested_by AS "staffId",
+          s.staff_code AS "staffCode",
+          s.staff_profile_image_name AS "staffProfile",
+          CONCAT(IFNULL(sur.status_name, ''), '.', s.first_name, ' ', s.last_name) AS "staffName",
+          s.vehicle_no AS "vehicleNo",
+          des.designation_name AS "designationName",
+          dep.department_name AS "departmentName",
+          c.apply_date AS "allowanceDate",
+          'N/A' AS "fromPlace",
+          'N/A' AS "toPlace",
+          NULL AS "fromPlaceId",
+          NULL AS "toPlaceId",
+          NULL AS "activityId",
+          c.is_active AS "isActive",
+          c.branch_id AS "branchId",
+          c.status_id AS "statusId",
+          b.branch_name AS "branchName",
+          s.branch_id AS "staffBranchId",
+          COALESCE(b_staff.branch_name, bl_b.branch_name, bl.branch_name,
+            (SELECT b3.branch_name FROM claims c3
+             LEFT JOIN branches b3 ON b3.branch_id = c3.branch_id
+             WHERE c3.requested_by = c.requested_by AND c3.is_active = 1
+             ORDER BY c3.createdAt DESC LIMIT 1)
+          ) AS "staffBranchName",
+          s.staff_code AS "staffCode",
+          c.reason AS "activityName",
+          0 AS "totalKm",
+          c.requested_amount AS "totalAmount",
+          NULL AS "billNo",
+          NULL AS "nameOfDealer",
+          c.recepit_image_name AS "billImageName",
+          c.createdAt AS "createdAt",
+          c.purchase_date AS "dateOfPurchase",
+          0 AS "pricePerLitre",
+          0 AS "qtyPerLitre",
+          1 AS "isImageApproved"
+        FROM claims c
+        LEFT JOIN staffs s ON s.staff_id = c.requested_by
+        LEFT JOIN branches b ON b.branch_id = c.branch_id
+        LEFT JOIN branches b_staff ON b_staff.branch_id = s.branch_id
+        LEFT JOIN branch_locations bl ON bl.staff_id = s.staff_id AND bl.is_active = 1
+        LEFT JOIN branches bl_b ON bl_b.branch_id = bl.branch_id
+        LEFT JOIN designation des ON des.designation_id = s.designation_id
+        LEFT JOIN department dep ON dep.department_id = s.department_id
+        LEFT JOIN status_lists sur ON sur.status_list_id = s.surname_id
+        ${claimIql}
+        ORDER BY c.createdAt DESC
+      `, { type: QueryTypes.SELECT, raw: true, nest: false });
+
+      if (query.petrolAllowanceId && String(query.petrolAllowanceId).startsWith('claim-')) {
+        result = claimsResult;
+      } else {
+        result = result.concat(claimsResult).sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
+      }
+    }
 
     return result;
   } catch (error) {
@@ -184,7 +240,9 @@ async function getPetrolReportAllowance(query) {
       }
       */
     }
-    conditions.push('pa.is_active = 1')
+    if (query.isActive !== undefined && query.isActive !== '') {
+      conditions.push(`pa.is_active = ${query.isActive}`);
+    }
 
     let iql = conditions.length ? `WHERE ${conditions.join(' AND ')}` : '';
 
@@ -194,16 +252,22 @@ async function getPetrolReportAllowance(query) {
       CONCAT(sur.status_name, '.', s.first_name, ' ', s.last_name) AS staffName,
       des.designation_name AS "designationName",  
       dep.department_name AS "departmentName",  
-      b.branch_name AS "branchName",  
+      COALESCE(b.branch_name, b2.branch_name) AS "branchName",  
+      COALESCE(b.branch_name, b2.branch_name, bl_b.branch_name, bl.branch_name,
+        (SELECT b3.branch_name FROM claims c3
+         LEFT JOIN branches b3 ON b3.branch_id = c3.branch_id
+         WHERE c3.requested_by = pa.staff_id AND c3.is_active = 1
+         ORDER BY c3.createdAt DESC LIMIT 1)
+      ) AS "staffBranchName",  
       s.staff_code AS "staffCode",  
       s.vehicle_no AS "vehicleNo",
       GROUP_CONCAT(DISTINCT a.activity_name SEPARATOR ' & ') AS "activityName",
-      CONCAT('[', GROUP_CONCAT(
+      IFNULL(CONCAT('[', GROUP_CONCAT(
       DISTINCT CASE 
-          WHEN pa.bill_no IS NOT NULL THEN
+          WHEN pa.bill_no IS NOT NULL OR pa.bill_image_name IS NOT NULL THEN
               CONCAT(
     '{"billNo":"', IFNULL(pa.bill_no, ''), '",',
-    '"isImageApproved":', IFNULL(pa.is_image_approved, ''), ',',
+    '"isImageApproved":', IFNULL(pa.is_image_approved, 2), ',',
     '"dateOfPurchase":"', IFNULL(pa.date_of_purchase, ''), '",',
     '"nameOftheDealer":"', REPLACE(IFNULL(pa.name_of_dealer, ''), '"', '\\"'), '",',
     '"billImageName":"', IFNULL(pa.bill_image_name, ''), '",', 
@@ -214,12 +278,12 @@ async function getPetrolReportAllowance(query) {
           ELSE NULL
       END
       SEPARATOR ','
-  ), ']') AS billDetails,
+  ), ']'), '[]') AS billDetails,
     CONCAT('[', GROUP_CONCAT(
     CONCAT(
       '{"billNo":"', IFNULL(pa.bill_no, ''), '",',
       '"allowanceDate":"', IFNULL(pa.allowance_date, ''), '",',
-       '"isImageApproved":', IFNULL(pa.is_image_approved, ''), ',',
+       '"isImageApproved":', IFNULL(pa.is_image_approved, 2), ',',
       '"fromPlace":"', IFNULL(
         CASE 
           WHEN vp_from.visit_places_name IS NOT NULL THEN vp_from.visit_places_name
@@ -232,8 +296,8 @@ async function getPetrolReportAllowance(query) {
           ELSE pa.to_place
         END, ''
       ), '"', '\\"'), '",',
-      '"activityName":"', a.activity_name, '",',
-      '"createdAt":"', pa.createdAt, '",',
+      '"activityName":"', IFNULL(a.activity_name, ''), '",',
+      '"createdAt":"', IFNULL(pa.createdAt, ''), '",',
       '"totalKm":"', IFNULL(pa.total_km, '0'), '",',
       '"totalAmount":', IFNULL(pa.total_amount, 0), '}'
     )
@@ -244,6 +308,9 @@ async function getPetrolReportAllowance(query) {
   LEFT JOIN staffs s ON s.staff_id = pa.staff_id
   LEFT JOIN designation des ON des.designation_id = s.designation_id
   LEFT JOIN branches b ON b.branch_id = s.branch_id
+  LEFT JOIN branches b2 ON b2.branch_id = pa.branch_id
+  LEFT JOIN branch_locations bl ON bl.staff_id = s.staff_id AND bl.is_active = 1
+  LEFT JOIN branches bl_b ON bl_b.branch_id = bl.branch_id
   LEFT JOIN status_lists sur ON sur.status_list_id = s.surname_id
   LEFT JOIN department dep ON dep.department_id = s.department_id
   LEFT JOIN activities a ON FIND_IN_SET(a.activity_id, pa.activity_id)

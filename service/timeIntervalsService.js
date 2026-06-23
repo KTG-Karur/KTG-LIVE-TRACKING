@@ -183,7 +183,7 @@ async function getCounts(staffId, date) {
      FROM staff_time_intervals 
      WHERE staff_id = ? 
        AND createdAt BETWEEN ? AND ?
-       AND actionType IN ('Visit In-Tracker', 'Visit Out-Tracker')`,
+       AND actionType = 'Visit In-Tracker'`,
     {
       replacements: [staffId, startTimestamp, endTimestamp],
       type: QueryTypes.SELECT

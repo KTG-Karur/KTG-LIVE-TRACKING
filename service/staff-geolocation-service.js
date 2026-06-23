@@ -148,6 +148,27 @@ async function createStaffGeolocation(postData) {
     
     await transaction.commit();
     
+    // Emit socket event for live location update
+    try {
+      const { getIO } = require('../socket-manager');
+      const io = getIO();
+      if (io) {
+        const geoRecord = {
+          staffId: postData.staffId,
+          latitude: postData.latitude,
+          longitude: postData.longitude,
+          speed: postData.speed,
+          battery: postData.battery,
+          networkStatus: postData.networkStatus,
+          actionType: postData.actionType,
+          recordCreatedAt: postData.recordCreatedAt || Date.now(),
+        };
+        io.emit('geo:update', geoRecord);
+      }
+    } catch (socketError) {
+      console.error('Socket emit error:', socketError.message);
+    }
+    
     // Return created record - use id instead of geo_id
     const req = { id: result.id };
     return await getStaffGeolocationDetails(req);
@@ -466,12 +487,121 @@ async function bulkCreateStaffGeolocations(geolocationsData, staffId) {
   }
 }
 
+async function getAdminLiveTracking(query) {
+  try {
+    if (!query.date) {
+      throw new Error("date parameter is required (YYYY-MM-DD)");
+    }
+    const queryDate = query.date;
+    const moment = require('moment');
+    const startOfDay = moment(queryDate).startOf('day').valueOf();
+    const endOfDay = moment(queryDate).endOf('day').valueOf();
+
+    // 1. Get all active staff (excluding Super Admin role_id = 1)
+    const activeStaff = await sequelize.query(
+      `SELECT staff_id AS "staffId", CONCAT(first_name, ' ', last_name) AS "staffName"
+       FROM staffs
+       WHERE is_active = 1 AND role_id != 1`,
+      { type: QueryTypes.SELECT }
+    );
+
+    if (!activeStaff || activeStaff.length === 0) {
+      return [];
+    }
+
+    // 2. Fetch all geolocations for this date
+    const geolocations = await sequelize.query(
+      `SELECT staff_id AS "staffId", latitude, longitude, record_createdAt AS "recordCreatedAt"
+       FROM staff_geolocations
+       WHERE record_createdAt BETWEEN :startOfDay AND :endOfDay
+       ORDER BY record_createdAt ASC`,
+      {
+        replacements: { startOfDay, endOfDay },
+        type: QueryTypes.SELECT
+      }
+    );
+
+    // Group geolocations by staffId
+    const geoByStaff = {};
+    geolocations.forEach(geo => {
+      if (!geoByStaff[geo.staffId]) {
+        geoByStaff[geo.staffId] = [];
+      }
+      geoByStaff[geo.staffId].push(geo);
+    });
+
+    const response = [];
+
+    // Haversine formula
+    const getDistance = (lat1, lon1, lat2, lon2) => {
+      const R = 6371; // km
+      const dLat = (lat2 - lat1) * Math.PI / 180;
+      const dLon = (lon2 - lon1) * Math.PI / 180;
+      const a =
+        Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+        Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) *
+        Math.sin(dLon / 2) * Math.sin(dLon / 2);
+      const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+      return R * c;
+    };
+
+    for (const staff of activeStaff) {
+      const staffId = staff.staffId;
+      const points = geoByStaff[staffId] || [];
+
+      let totalKm = 0;
+      let lastLocation = null;
+
+      // Filter out points with invalid coordinates
+      const validPoints = points.filter(p => {
+        const lat = parseFloat(p.latitude);
+        const lng = parseFloat(p.longitude);
+        return !isNaN(lat) && !isNaN(lng);
+      });
+
+      if (validPoints.length > 0) {
+        // Calculate cumulative distance
+        for (let i = 0; i < validPoints.length - 1; i++) {
+          const p1 = validPoints[i];
+          const p2 = validPoints[i + 1];
+          const dist = getDistance(
+            parseFloat(p1.latitude),
+            parseFloat(p1.longitude),
+            parseFloat(p2.latitude),
+            parseFloat(p2.longitude)
+          );
+          totalKm += dist;
+        }
+
+        const lastRec = validPoints[validPoints.length - 1];
+        lastLocation = {
+          lat: parseFloat(lastRec.latitude),
+          lng: parseFloat(lastRec.longitude),
+          timestamp: lastRec.recordCreatedAt
+        };
+      }
+
+      response.push({
+        user_id: staffId,
+        employee_name: staff.staffName,
+        total_km: parseFloat(totalKm.toFixed(2)),
+        last_location: lastLocation
+      });
+    }
+
+    return response;
+  } catch (error) {
+    throw new Error(error.message || "Operation error");
+  }
+}
+
 module.exports = {
   getStaffGeolocations,
   updateStaffGeolocation,
   createStaffGeolocation,
   getStaffGeolocationDetails,
   deleteStaffGeolocation,
-  bulkCreateStaffGeolocations
+  bulkCreateStaffGeolocations,
+  getAdminLiveTracking,
 };
 

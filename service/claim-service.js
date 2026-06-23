@@ -71,6 +71,21 @@ async function getClaim(query, isEdit = false) {
           filters.push(`s.department_id = ${query.departmentId}`);
         }
       }
+
+      if (query.type === 'travel') {
+        filters.push(`(ct.claim_type_name = 'TRAVEL EXPENSES' OR ct.claim_type_name = 'TRAVEL-EXPENSES')`);
+      } else if (query.type === 'other') {
+        filters.push(`(ct.claim_type_name IS NULL OR (ct.claim_type_name != 'TRAVEL EXPENSES' AND ct.claim_type_name != 'TRAVEL-EXPENSES'))`);
+      }
+
+      if (query.excludeClaimTypeId) {
+        const excludeIds = String(query.excludeClaimTypeId).split(',').map(id => id.trim()).filter(id => id);
+        if (excludeIds.length === 1) {
+          filters.push(`c.claim_type_id != ${excludeIds[0]}`);
+        } else if (excludeIds.length > 1) {
+          filters.push(`c.claim_type_id NOT IN (${excludeIds.join(',')})`);
+        }
+      }
     }
     if (!isEdit) {
       filters.push(`c.is_active = 1`);
@@ -89,12 +104,14 @@ async function getClaim(query, isEdit = false) {
         CONCAT(s2.first_name,' ',s2.last_name) as approvedBy, c.createdAt,
         ct.eligible_amount "eligibleAmount",c.recepit_image_name "recepitImageName",
         s.role_id "roleId", rl.role_name "roleName", c.is_active "isActive",
-      des.designation_name 'designationName',  dep.department_name 'departmentName'
+        des.designation_name 'designationName',  dep.department_name 'departmentName',
+        s.branch_id "staffBranchId", b_staff.branch_name "staffBranchName"
         FROM claims c
         left join claim_types ct on ct.claim_type_id = c.claim_type_id 
         left join staffs s on s.staff_id = c.requested_by 
         left join staffs s2 on s2.staff_id = c.approved_by 
         left join branches b on b.branch_id = c.branch_id 
+        left join branches b_staff on b_staff.branch_id = s.branch_id
         left join role rl on rl.role_id = s.role_id
       left join designation des on des.designation_id = s.designation_id
       left join department dep on dep.department_id = s.department_id

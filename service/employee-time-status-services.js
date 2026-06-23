@@ -59,7 +59,14 @@ let attendanceDate={"attendanceDate":date};
                 
                 // Determine movement status
                 const movementStatus = calculateMovementStatus(latestGeoLocation, previousGeoLocation);
-                const staffPresent=staffdayAttenList.filter(s=>s.staffId==staff.staffId)
+
+                // Mark as offline if the user has punched out
+                if (isUserPunchedOut(timeIntervals) && latestGeoLocation) {
+                  latestGeoLocation.actionType = 'offline';
+                }
+
+                const staffPresent = staffdayAttenList.filter(s => s.staffId == staff.staffId);
+                const attendanceInfo = staffPresent.length > 0 ? staffPresent[0] : { attendanceStatus: 'absent', attendanceStatusId: 0 };
                 // Get punch times
                 const punchInTime = getPunchTime(timeIntervals, 'Punch In-Tracker');
                 const punchOutTime = getPunchTime(timeIntervals, 'Punch Out-Tracker');
@@ -76,8 +83,8 @@ let attendanceDate={"attendanceDate":date};
                     branchName: staff.branchName,
                     departmentId: staff.departmentId,
                     departmentName: staff.departmentName,
-                    attendanceStatus:staffPresent[0].attendanceStatus,
-                    attendanceStatusId:staffPresent[0].attendanceStatusId,
+                    attendanceStatus: attendanceInfo.attendanceStatus,
+                    attendanceStatusId: attendanceInfo.attendanceStatusId,
                     timeIntervals:timeIntervals,
                     attendanceDate: date,
                     totalDistance:totalDistance,
@@ -130,6 +137,16 @@ let attendanceDate={"attendanceDate":date};
         console.error("Error in getAllEmployeeTrackingWithStatus:", error);
         throw new Error(error.message ? error.message : messages.OPERATION_ERROR);
     }
+}
+
+function isUserPunchedOut(timeIntervals) {
+  if (!timeIntervals || timeIntervals.length === 0) return false;
+  for (let i = timeIntervals.length - 1; i >= 0; i--) {
+    const ti = timeIntervals[i];
+    if (ti.actionType === 'Punch Out-Tracker') return true;
+    if (ti.actionType === 'Punch In-Tracker') return false;
+  }
+  return false;
 }
 
 async function getTimeIntervalsForStaff(staffId, date) {
@@ -359,7 +376,7 @@ function getPunchTime(timeIntervals, actionType) {
 function getVisitCount(timeIntervals) {
     if (!timeIntervals || timeIntervals.length === 0) return 0;
     
-    return timeIntervals.length;
+    return timeIntervals.filter(ti => ti.actionType === 'Visit In-Tracker').length;
 }
 
 function formatTimeFromTimestamp(timestamp) {

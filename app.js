@@ -9,6 +9,23 @@ const fastifyStatic = require('@fastify/static');
 const fastify = Fastify();
 const fs = require('fs');
 
+// Ensure upload directories exist for static file serving
+const uploadDirs = [
+    path.join(__dirname, 'uploads'),
+    path.join(__dirname, 'uploads', 'staff-proof'),
+    path.join(__dirname, 'uploads', 'company-info'),
+    path.join(__dirname, 'uploads', 'claim-proof'),
+    path.join(__dirname, 'uploads', 'petrol-allowance-proof'),
+    path.join(__dirname, 'uploads', 'staff-attendance'),
+    path.join(__dirname, 'uploads', 'visitor-entry'),
+    path.join(__dirname, 'uploads', 'attachments'),
+];
+uploadDirs.forEach(dir => {
+    if (!fs.existsSync(dir)) {
+        fs.mkdirSync(dir, { recursive: true });
+    }
+});
+
 //Swagger Docs---->
 fastify.register(require('@fastify/swagger'));
 fastify.register(require('@fastify/swagger-ui'), {

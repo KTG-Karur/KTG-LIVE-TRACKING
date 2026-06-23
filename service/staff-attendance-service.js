@@ -777,10 +777,135 @@ async function updateStaffAttendance(putData) {
 }
 
 
+async function getAdminAttendance(query) {
+  try {
+    if (!query.date) {
+      throw new Error("date parameter is required (YYYY-MM-DD)");
+    }
+    const queryDate = query.date;
+    const startOfDay = moment(queryDate).startOf('day').valueOf();
+    const endOfDay = moment(queryDate).endOf('day').valueOf();
+
+    // 1. Get all active staff (excluding Super Admin role_id = 1)
+    const activeStaff = await sequelize.query(
+      `SELECT staff_id AS "staffId", CONCAT(first_name, ' ', last_name) AS "staffName", branch_id AS "branchId", department_id AS "departmentId"
+       FROM staffs
+       WHERE is_active = 1 AND role_id != 1`,
+      { type: QueryTypes.SELECT }
+    );
+
+    if (!activeStaff || activeStaff.length === 0) {
+      return [];
+    }
+
+    // 2. Fetch all punch records on that day
+    const punchRecords = await sequelize.query(
+      `SELECT staff_id AS "staffId", action_type AS "actionType", record_created_at AS "recordCreatedAt"
+       FROM time_intervals
+       WHERE record_created_at BETWEEN :startOfDay AND :endOfDay
+         AND action_type IN ('Punch In-Tracker', 'Punch Out-Tracker')
+       ORDER BY record_created_at ASC`,
+      {
+        replacements: { startOfDay, endOfDay },
+        type: QueryTypes.SELECT
+      }
+    );
+
+    // Group punch records by staffId
+    const punchesByStaff = {};
+    punchRecords.forEach(rec => {
+      if (!punchesByStaff[rec.staffId]) {
+        punchesByStaff[rec.staffId] = [];
+      }
+      punchesByStaff[rec.staffId].push(rec);
+    });
+
+    const response = [];
+
+    for (const staff of activeStaff) {
+      const staffId = staff.staffId;
+      const staffPunches = punchesByStaff[staffId] || [];
+
+      const inPunches = staffPunches.filter(p => p.actionType === 'Punch In-Tracker');
+      const outPunches = staffPunches.filter(p => p.actionType === 'Punch Out-Tracker');
+
+      const punchInTime = inPunches.length > 0 ? Math.min(...inPunches.map(p => p.recordCreatedAt)) : null;
+      const punchOutTime = outPunches.length > 0 ? Math.max(...outPunches.map(p => p.recordCreatedAt)) : null;
+
+      let workingHours = 0;
+      let attendanceStatus = 'ABSENT';
+
+      if (punchInTime) {
+        if (punchOutTime && punchOutTime > punchInTime) {
+          workingHours = parseFloat(((punchOutTime - punchInTime) / 3600000).toFixed(2));
+          attendanceStatus = workingHours < 4 ? 'HALF_DAY' : 'FULL_DAY';
+        } else {
+          workingHours = 0;
+          attendanceStatus = 'HALF_DAY';
+        }
+      }
+
+      // Store in staff_attendances database table if punch_in exists
+      if (punchInTime) {
+        const statusId = attendanceStatus === 'HALF_DAY' ? 2 : 1;
+        const [existing] = await sequelize.query(
+          `SELECT staff_attendance_id 
+           FROM staff_attendances 
+           WHERE staff_id = :staffId AND attendance_date = :queryDate 
+           LIMIT 1`,
+          {
+            replacements: { staffId, queryDate },
+            type: QueryTypes.SELECT
+          }
+        );
+
+        if (existing) {
+          await sequelize.query(
+            `UPDATE staff_attendances 
+             SET attendance_status_id = :statusId, updatedAt = CURRENT_TIMESTAMP
+             WHERE staff_attendance_id = :attendanceId`,
+            {
+              replacements: { statusId, attendanceId: existing.staff_attendance_id }
+            }
+          );
+        } else {
+          await sequelize.query(
+            `INSERT INTO staff_attendances (staff_id, attendance_date, branch_id, department_id, attendance_status_id, attendance_incharge_id, createdAt, updatedAt)
+             VALUES (:staffId, :queryDate, :branchId, :departmentId, :statusId, :staffId, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)`,
+            {
+              replacements: {
+                staffId,
+                queryDate,
+                branchId: staff.branchId,
+                departmentId: staff.departmentId,
+                statusId
+              }
+            }
+          );
+        }
+      }
+
+      response.push({
+        user_id: staffId,
+        employee_name: staff.staffName,
+        punch_in: punchInTime ? moment(punchInTime).format('YYYY-MM-DD HH:mm:ss') : null,
+        punch_out: punchOutTime ? moment(punchOutTime).format('YYYY-MM-DD HH:mm:ss') : null,
+        working_hours: workingHours,
+        attendance_status: attendanceStatus
+      });
+    }
+
+    return response;
+  } catch (error) {
+    throw new Error(error.message || "Operation error");
+  }
+}
+
 module.exports = {
   getStaffAttendance,
   updateStaffAttendance,
   getStaffAttendanceList,
   createStaffAttendance,
   getStaffAttendanceReport,
+  getAdminAttendance,
 };

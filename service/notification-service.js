@@ -56,10 +56,11 @@ async function getNotification(query) {
       sequelize.query(
         `
       SELECT 
-       CONCAT(sur.status_name,'.',s.first_name,' ',s.last_name) as staffName,  cl.claim_id claim_id, cl.reason reason, cl.createdAt 
+       CONCAT(sur.status_name,'.',s.first_name,' ',s.last_name) as staffName,  cl.claim_id claim_id, ct.claim_type_name claimTypeName, cl.createdAt 
       FROM claims cl
       left join staffs s on s.staff_id = cl.requested_by 
       left join status_lists sur on sur.status_list_id = s.surname_id 
+      left join claim_types ct on ct.claim_type_id = cl.claim_type_id 
       WHERE cl.status_id = 28
     `,
         { type: QueryTypes.SELECT }
@@ -95,7 +96,7 @@ async function getNotification(query) {
         id: item.claim_id,
         type: "claim",
         text: `${item.staffName} - Claim Request`,
-        subText: `For: ${item.reason}`,
+        subText: `For: ${item.claimTypeName || 'N/A'}`,
         route: "/claim/claim-list",
         date: item.createdAt,
       })),

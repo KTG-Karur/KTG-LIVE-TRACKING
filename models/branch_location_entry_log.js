@@ -65,6 +65,26 @@ module.exports = (sequelize, DataTypes) => {
     },
     notification_sent_at: {
       type: DataTypes.DATE
+    },
+    visit_out_time: {
+      type: DataTypes.DATE
+    },
+    visit_out_latitude: {
+      type: DataTypes.DECIMAL(11, 7)
+    },
+    visit_out_longitude: {
+      type: DataTypes.DECIMAL(11, 7)
+    },
+    total_distance_km: {
+      type: DataTypes.DECIMAL(10, 3)
+    },
+    session_status: {
+      type: DataTypes.STRING,
+      defaultValue: 'active'
+    },
+    client_visits_count: {
+      type: DataTypes.INTEGER,
+      defaultValue: 0
     }
   }, {
     sequelize,

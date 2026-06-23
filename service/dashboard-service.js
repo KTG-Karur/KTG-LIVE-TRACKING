@@ -6,6 +6,25 @@ const _ = require('lodash');
 const { QueryTypes } = require('sequelize');
 const moment = require('moment')
 
+// Returns { current, previous, change, trend }
+// trend: 'up' | 'down' | 'same'
+function compareValues(current, previous) {
+    const cur = parseFloat(current) || 0;
+    const prev = parseFloat(previous) || 0;
+    let change = 0;
+    if (prev > 0) {
+        change = parseFloat((((cur - prev) / prev) * 100).toFixed(2));
+    } else if (cur > 0) {
+        change = 100;
+    }
+    return {
+        current: cur,
+        previous: prev,
+        change,
+        trend: cur > prev ? 'up' : cur < prev ? 'down' : 'same'
+    };
+}
+
 // async function getDashboard(query) {
 //   try {
 
@@ -229,7 +248,9 @@ async function getDashboard(query) {
       roleCount,
       branchCount,
       activeAndClosedLoanCount,
-      previousActiveAndClosedLoanCount
+      previousActiveAndClosedLoanCount,
+      employeeReachedData,
+      kmTravelledData
     ] = await Promise.all([
 
       // Staff Leaves in Last 1 Week
@@ -324,6 +345,23 @@ async function getDashboard(query) {
           SUM(CASE WHEN is_active = 0 THEN 1 ELSE 0 END) AS prevClosedLoanCount
         FROM staff_loans
         WHERE loan_date < DATE_FORMAT(NOW(), '%Y-%m-01')
+      `, { type: QueryTypes.SELECT, raw: true }),
+
+      // Employee Reached — today vs yesterday
+      sequelize.query(`
+        SELECT
+          SUM(CASE WHEN entry_date = '${currentDate}' AND status = 'Location Reached' THEN 1 ELSE 0 END) AS todayReachedCount,
+          SUM(CASE WHEN entry_date = DATE_SUB('${currentDate}', INTERVAL 1 DAY) AND status = 'Location Reached' THEN 1 ELSE 0 END) AS prevReachedCount
+        FROM branch_location_entry_logs
+      `, { type: QueryTypes.SELECT, raw: true }),
+
+      // Total KM Travelled — this month vs last month
+      sequelize.query(`
+        SELECT
+          SUM(CASE WHEN tracking_date >= DATE_FORMAT(NOW(), '%Y-%m-01') THEN total_distance_km ELSE 0 END) AS currentMonthKm,
+          SUM(CASE WHEN tracking_date >= DATE_FORMAT(DATE_SUB(NOW(), INTERVAL 1 MONTH), '%Y-%m-01')
+                    AND tracking_date <  DATE_FORMAT(NOW(), '%Y-%m-01') THEN total_distance_km ELSE 0 END) AS prevMonthKm
+        FROM employee_tracking_reports
       `, { type: QueryTypes.SELECT, raw: true })
 
     ]);
@@ -371,11 +409,17 @@ async function getDashboard(query) {
       roleCount,
       branchCount,
       activeAndClosedLoanCount: {
-        activeLoanCount: activeAndClosedLoanCount[0].activeLoanCount || 0,
-        closedLoanCount: activeAndClosedLoanCount[0].closedLoanCount || 0,
-        prevActiveLoanCount: previousActiveAndClosedLoanCount[0].prevActiveLoanCount || 0,
-        prevClosedLoanCount: previousActiveAndClosedLoanCount[0].prevClosedLoanCount || 0
-      }
+        activeLoan:  compareValues(activeAndClosedLoanCount[0].activeLoanCount,  previousActiveAndClosedLoanCount[0].prevActiveLoanCount),
+        closedLoan:  compareValues(activeAndClosedLoanCount[0].closedLoanCount,  previousActiveAndClosedLoanCount[0].prevClosedLoanCount)
+      },
+      employeeReached: compareValues(
+        employeeReachedData[0].todayReachedCount,
+        employeeReachedData[0].prevReachedCount
+      ),
+      kmTravelled: compareValues(
+        kmTravelledData[0].currentMonthKm,
+        kmTravelledData[0].prevMonthKm
+      )
     };
 
   } catch (error) {
